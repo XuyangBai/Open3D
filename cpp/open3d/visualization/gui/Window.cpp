@@ -462,8 +462,16 @@ Window::Window(const std::string& title,
                 float scaling = this->GetScaling();
                 int ix = int(std::ceil(mx * scaling));
                 int iy = int(std::ceil(my * scaling));
+
                 MouseEvent me = {type, ix, iy, KeymodsFromGLFW(mods)};
                 me.button.button = MouseButton(MouseButtonFromGLFW(button));
+
+                utility::LogInfo(
+                        "MouseButton WebRTC: type {}, ix {}, iy {}, mods {}, "
+                        "button {}",
+                        type, ix, iy, KeymodsFromGLFW(mods),
+                        MouseButton(MouseButtonFromGLFW(button)));
+
                 this->OnMouseEvent(me);
                 UpdateAfterEvent(this);
             };
@@ -1375,8 +1383,9 @@ void Window::MouseButtonCallback(GLFWwindow* window,
                                  int button,
                                  int action,
                                  int mods) {
-    utility::LogInfo("Window::MouseButtonCallback: {}, {}, {}", button, action,
-                     mods);
+    // utility::LogInfo("Window::MouseButtonCallback: {}, {}, {}", button,
+    // action,
+    //                  mods);
 
     Window* w = static_cast<Window*>(glfwGetWindowUserPointer(window));
 
@@ -1390,6 +1399,11 @@ void Window::MouseButtonCallback(GLFWwindow* window,
 
     MouseEvent me = {type, ix, iy, KeymodsFromGLFW(mods)};
     me.button.button = MouseButton(MouseButtonFromGLFW(button));
+
+    utility::LogInfo(
+            "MouseButton GLFW: type {}, ix {}, iy {}, mods {}, button {}", type,
+            ix, iy, KeymodsFromGLFW(mods),
+            MouseButton(MouseButtonFromGLFW(button)));
 
     w->OnMouseEvent(me);
     UpdateAfterEvent(w);
