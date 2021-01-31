@@ -169,9 +169,10 @@ int main(int argc, char *argv[]) {
             }
 
             utility::LogDebug("{:d} points remain", mutual.size());
+            std::vector<double>* distr = new std::vector<double>(int(mutual.size()), 1);
             registration_result = pipelines::registration::
                     RegistrationRANSACBasedOnCorrespondence(
-                            *source, *target, mutual, 0.075,
+                            *source, *target, mutual, distr, 0.075,
                             pipelines::registration::
                                     TransformationEstimationPointToPoint(false),
                             3, correspondence_checker,
@@ -179,9 +180,10 @@ int main(int argc, char *argv[]) {
                                     100000, 0.999));
         } else {
             utility::LogDebug("{:d} points remain", corres_ji.size());
+            std::vector<double>* distr = new std::vector<double>(int(corres_ji.size()), 1);
             registration_result = pipelines::registration::
                     RegistrationRANSACBasedOnCorrespondence(
-                            *source, *target, corres_ji, 0.075,
+                            *source, *target, corres_ji, distr, 0.075,
                             pipelines::registration::
                                     TransformationEstimationPointToPoint(false),
                             3, correspondence_checker,

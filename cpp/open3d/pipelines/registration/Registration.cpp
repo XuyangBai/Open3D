@@ -31,6 +31,7 @@
 #include "open3d/pipelines/registration/Feature.h"
 #include "open3d/utility/Console.h"
 #include "open3d/utility/Helper.h"
+#include <random>
 
 namespace open3d {
 namespace pipelines {
@@ -190,6 +191,7 @@ RegistrationResult RegistrationRANSACBasedOnCorrespondence(
         const geometry::PointCloud &source,
         const geometry::PointCloud &target,
         const CorrespondenceSet &corres,
+        std::vector<double>* distr,
         double max_correspondence_distance,
         const TransformationEstimation &estimation
         /* = TransformationEstimationPointToPoint(false)*/,
@@ -203,73 +205,104 @@ RegistrationResult RegistrationRANSACBasedOnCorrespondence(
         return RegistrationResult();
     }
 
-    RegistrationResult best_result;
-    int exit_itr = -1;
-
-#pragma omp parallel
-    {
-        CorrespondenceSet ransac_corres(ransac_n);
-        RegistrationResult best_result_local;
-        int exit_itr_local = criteria.max_iteration_;
-
-#pragma omp for nowait
-        for (int itr = 0; itr < criteria.max_iteration_; itr++) {
-            if (itr < exit_itr_local) {
-                for (int j = 0; j < ransac_n; j++) {
-                    ransac_corres[j] = corres[utility::UniformRandInt(
-                            0, static_cast<int>(corres.size()) - 1)];
-                }
-
-                Eigen::Matrix4d transformation =
-                        estimation.ComputeTransformation(source, target,
-                                                         ransac_corres);
-
-                // Check transformation: inexpensive
-                bool check = true;
-                for (const auto &checker : checkers) {
-                    if (!checker.get().Check(source, target, ransac_corres,
-                                             transformation)) {
-                        check = false;
-                        break;
-                    }
-                }
-                if (!check) continue;
-
-                geometry::PointCloud pcd = source;
-                pcd.Transform(transformation);
-                auto result = EvaluateRANSACBasedOnCorrespondence(
-                        pcd, target, corres, max_correspondence_distance,
-                        transformation);
-
-                if (result.IsBetterRANSACThan(best_result_local)) {
-                    best_result_local = result;
-
-                    // Update exit condition if necessary
-                    double exit_itr_d =
-                            std::log(1.0 - criteria.confidence_) /
-                            std::log(1.0 - std::pow(result.fitness_, ransac_n));
-                    exit_itr_local =
-                            exit_itr_d < double(criteria.max_iteration_)
-                                    ? static_cast<int>(std::ceil(exit_itr_d))
-                                    : exit_itr_local;
-                }
-            }  // if < exit_itr_local
-        }      // for loop
-#pragma omp critical
-        {
-            if (best_result_local.IsBetterRANSACThan(best_result)) {
-                best_result = best_result_local;
-            }
-            if (exit_itr_local > exit_itr) {
-                exit_itr = exit_itr_local;
-            }
+    std::srand((unsigned int)std::time(0));
+    Eigen::Matrix4d transformation;
+    CorrespondenceSet ransac_corres(ransac_n);
+    RegistrationResult result;
+    static thread_local std::mt19937 generator(std::random_device{}());
+    // std::default_random_engine generator(std::random_device{}());
+    std::discrete_distribution<int> distribution(distr->begin(), distr->end());
+    for (int itr = 0;
+         itr < criteria.max_iteration_;
+         itr++) {
+        for (int j = 0; j < ransac_n; j++) {
+            ransac_corres[j] = corres[distribution(generator)];
+//            ransac_corres[j] = corres[std::rand() % (int)corres.size()];
+        }
+        transformation =
+                estimation.ComputeTransformation(source, target, ransac_corres);
+        geometry::PointCloud pcd = source;
+        pcd.Transform(transformation);
+        auto this_result = EvaluateRANSACBasedOnCorrespondence(
+                pcd, target, corres, max_correspondence_distance,
+                transformation);
+        if (this_result.fitness_ > result.fitness_ ||
+            (this_result.fitness_ == result.fitness_ &&
+             this_result.inlier_rmse_ < result.inlier_rmse_)) {
+            result = this_result;
         }
     }
-    utility::LogDebug(
-            "RANSAC exits at {:d}-th iteration: inlier ratio {:e}, "
-            "RMSE {:e}",
-            exit_itr, best_result.fitness_, best_result.inlier_rmse_);
-    return best_result;
+    utility::LogDebug("RANSAC: Fitness {:e}, RMSE {:e}", result.fitness_,
+                      result.inlier_rmse_);
+    return result;
+
+    // RegistrationResult best_result;
+    // int exit_itr = -1;
+
+// #pragma omp parallel
+//     {
+//         CorrespondenceSet ransac_corres(ransac_n);
+//         RegistrationResult best_result_local;
+//         int exit_itr_local = criteria.max_iteration_;
+
+// #pragma omp for nowait
+//         for (int itr = 0; itr < criteria.max_iteration_; itr++) {
+//             if (itr < exit_itr_local) {
+//                 for (int j = 0; j < ransac_n; j++) {
+//                     ransac_corres[j] = corres[utility::UniformRandInt(
+//                             0, static_cast<int>(corres.size()) - 1)];
+//                 }
+
+//                 Eigen::Matrix4d transformation =
+//                         estimation.ComputeTransformation(source, target,
+//                                                          ransac_corres);
+
+//                 // Check transformation: inexpensive
+//                 bool check = true;
+//                 for (const auto &checker : checkers) {
+//                     if (!checker.get().Check(source, target, ransac_corres,
+//                                              transformation)) {
+//                         check = false;
+//                         break;
+//                     }
+//                 }
+//                 if (!check) continue;
+
+//                 geometry::PointCloud pcd = source;
+//                 pcd.Transform(transformation);
+//                 auto result = EvaluateRANSACBasedOnCorrespondence(
+//                         pcd, target, corres, max_correspondence_distance,
+//                         transformation);
+
+//                 if (result.IsBetterRANSACThan(best_result_local)) {
+//                     best_result_local = result;
+
+//                     // Update exit condition if necessary
+//                     double exit_itr_d =
+//                             std::log(1.0 - criteria.confidence_) /
+//                             std::log(1.0 - std::pow(result.fitness_, ransac_n));
+//                     exit_itr_local =
+//                             exit_itr_d < double(criteria.max_iteration_)
+//                                     ? static_cast<int>(std::ceil(exit_itr_d))
+//                                     : exit_itr_local;
+//                 }
+//             }  // if < exit_itr_local
+//         }      // for loop
+// #pragma omp critical
+//         {
+//             if (best_result_local.IsBetterRANSACThan(best_result)) {
+//                 best_result = best_result_local;
+//             }
+//             if (exit_itr_local > exit_itr) {
+//                 exit_itr = exit_itr_local;
+//             }
+//         }
+//     }
+//     utility::LogDebug(
+//             "RANSAC exits at {:d}-th iteration: inlier ratio {:e}, "
+//             "RMSE {:e}",
+//             exit_itr, best_result.fitness_, best_result.inlier_rmse_);
+//     return best_result;
 }
 
 RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
@@ -335,17 +368,18 @@ RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
         if (int(corres_mutual.size()) >= ransac_n * 3) {
             utility::LogDebug("{:d} correspondences remain after mutual filter",
                               corres_mutual.size());
+            std::vector<double>* distr = new std::vector<double>(int(corres_mutual.size()), 1);
             return RegistrationRANSACBasedOnCorrespondence(
-                    source, target, corres_mutual, max_correspondence_distance,
+                    source, target, corres_mutual, distr, max_correspondence_distance,
                     estimation, ransac_n, checkers, criteria);
         }
         utility::LogDebug(
                 "Too few correspondences after mutual filter, fall back to "
                 "original correspondences.");
     }
-
+    std::vector<double>* distr = new std::vector<double>(int(corres_ij.size()), 1);
     return RegistrationRANSACBasedOnCorrespondence(
-            source, target, corres_ij, max_correspondence_distance, estimation,
+            source, target, corres_ij, distr, max_correspondence_distance, estimation,
             ransac_n, checkers, criteria);
 }
 

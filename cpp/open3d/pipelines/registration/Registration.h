@@ -189,6 +189,7 @@ RegistrationResult RegistrationRANSACBasedOnCorrespondence(
         const geometry::PointCloud &source,
         const geometry::PointCloud &target,
         const CorrespondenceSet &corres,
+        std::vector<double>* distr,
         double max_correspondence_distance,
         const TransformationEstimation &estimation =
                 TransformationEstimationPointToPoint(false),

@@ -589,7 +589,7 @@ void pybind_registration_methods(py::module &m) {
           &RegistrationRANSACBasedOnCorrespondence,
           "Function for global RANSAC registration based on a set of "
           "correspondences",
-          "source"_a, "target"_a, "corres"_a, "max_correspondence_distance"_a,
+          "source"_a, "target"_a, "corres"_a, "distr"_a, "max_correspondence_distance"_a,
           "estimation_method"_a = TransformationEstimationPointToPoint(false),
           "ransac_n"_a = 3,
           "checkers"_a = std::vector<
